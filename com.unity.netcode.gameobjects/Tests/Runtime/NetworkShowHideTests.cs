@@ -2,9 +2,9 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
+using Unity.Netcode.TestHelpers.Runtime;
 using UnityEngine;
 using UnityEngine.TestTools;
-using Unity.Netcode.TestHelpers.Runtime;
 
 namespace Unity.Netcode.RuntimeTests
 {
@@ -71,7 +71,7 @@ namespace Unity.Netcode.RuntimeTests
         public NetworkList<int> MyListSetOnSpawn;
         public NetworkVariable<int> MyOwnerReadNetworkVariable;
         public NetworkList<int> MyList;
-        static public NetworkManager NetworkManagerOfInterest;
+        public static NetworkManager NetworkManagerOfInterest;
 
         internal static int GainOwnershipCount = 0;
 
@@ -114,10 +114,7 @@ namespace Unity.Netcode.RuntimeTests
         public void SomeRandomClientRPC()
         {
             Debug.Log($"RPC called {NetworkManager.LocalClientId}");
-            if (ClientIdsRpcCalledOn != null)
-            {
-                ClientIdsRpcCalledOn.Add(NetworkManager.LocalClientId);
-            }
+            ClientIdsRpcCalledOn?.Add(NetworkManager.LocalClientId);
         }
 
         public void TriggerRpc()
@@ -208,10 +205,12 @@ namespace Unity.Netcode.RuntimeTests
             }
             else
             {
-                var list = new List<NetworkObject>();
-                list.Add(m_NetSpawnedObject1);
-                list.Add(m_NetSpawnedObject2);
-                list.Add(m_NetSpawnedObject3);
+                var list = new List<NetworkObject>
+                {
+                    m_NetSpawnedObject1,
+                    m_NetSpawnedObject2,
+                    m_NetSpawnedObject3
+                };
 
                 if (!visibility)
                 {
@@ -285,6 +284,36 @@ namespace Unity.Netcode.RuntimeTests
                 // verify they become visible
                 yield return CheckVisible(true);
             }
+        }
+
+        [UnityTest]
+        public IEnumerator ConcurrentShowAndHideOnDifferentObjects()
+        {
+            m_ClientId0 = m_ClientNetworkManagers[0].LocalClientId;
+            ShowHideObject.ClientTargetedNetworkObjects.Clear();
+            ShowHideObject.ClientIdToTarget = m_ClientId0;
+
+
+            // create 3 objects
+            var spawnedObject1 = SpawnObject(m_PrefabToSpawn, m_ServerNetworkManager);
+            var spawnedObject2 = SpawnObject(m_PrefabToSpawn, m_ServerNetworkManager);
+            var spawnedObject3 = SpawnObject(m_PrefabToSpawn, m_ServerNetworkManager);
+            m_NetSpawnedObject1 = spawnedObject1.GetComponent<NetworkObject>();
+            m_NetSpawnedObject2 = spawnedObject2.GetComponent<NetworkObject>();
+            m_NetSpawnedObject3 = spawnedObject3.GetComponent<NetworkObject>();
+
+            // get the NetworkObject on a client instance
+            yield return WaitForConditionOrTimeOut(RefreshNetworkObjects);
+            AssertOnTimeout($"Could not refresh all NetworkObjects!");
+
+            m_NetSpawnedObject1.NetworkHide(m_ClientId0);
+
+            yield return WaitForTicks(m_ServerNetworkManager, 5);
+
+            m_NetSpawnedObject1.NetworkShow(m_ClientId0);
+            m_NetSpawnedObject2.NetworkHide(m_ClientId0);
+
+            yield return WaitForTicks(m_ServerNetworkManager, 5);
         }
 
         [UnityTest]
